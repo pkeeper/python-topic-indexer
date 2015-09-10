@@ -5,8 +5,10 @@ import nltk
 from news_trainer import get_filenames, features_from_text
 
 RECORDS_TO_TRAIN = 25
-classification_names = ('news_based_NaiveBayesClassifier',
-                        'news_based_sklearnLinSVC',)
+classification_names = (  # 'news_based_NaiveBayesClassifier',
+    'news_based_sklearnLinSVC',
+    'news_based_BernoulliNB',
+    'news_based_MultinomialNB')
 current_path = os.path.dirname(os.path.realpath(__file__))
 # Location of the classificator data
 pickles_dir = os.path.join(current_path, "classifier_pickles")
@@ -42,6 +44,13 @@ def check_accuracy(data):
         ac = nltk.classify.accuracy(cl, data)
         print '%s Accuracy: %4.4f' % (clname, ac)
 
+    for clname, cl in classifiers.iteritems():
+        try:
+            print 'Most informative for ', clname
+            cl.show_most_informative_features(5)
+        except:
+            pass
+
 
 def classify_few(data):
     global classifiers
@@ -49,10 +58,10 @@ def classify_few(data):
         print 'Tagged with : ', d[1]
         for clname, cl in classifiers.iteritems():
             print 'Classifier %s decision: [%s]' % (clname, cl.classify(d[0]))
-            cl.show_most_informative_features(5)
+
 
 if __name__ == '__main__':
     classifiers_preload()
     data = get_training_data()
-    # classify_few(data)
+    classify_few(data)
     check_accuracy(data)

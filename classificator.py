@@ -3,7 +3,7 @@ import pickle
 from news_trainer import features_from_text
 
 RECORDS_TO_TRAIN = 25
-classification_name = 'news_based_NaiveBayesClassifier'
+classification_name = 'news_based_sklearnLinSVC'
 current_path = os.path.dirname(os.path.realpath(__file__))
 # Location of the classificator data
 pickles_dir = os.path.join(current_path, "classifier_pickles")

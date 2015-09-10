@@ -5,7 +5,8 @@ import json
 import gc
 import nltk
 import pickle
-from itertools import izip_longest
+from collections import Counter
+from itertools import izip, chain
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize.regexp import wordpunct_tokenize
 from nltk.corpus import stopwords
@@ -25,8 +26,14 @@ sw = stopwords.words('english')
 skclassifier = SklearnClassifier(LinearSVC(multi_class='ovr'))
 gc.disable()
 
-RECORDS_TO_TRAIN = 25
-CLASSIFIER = 'sklearnLinSVC'  # NaiveBayesClassifier
+RECORDS_TO_TRAIN = 10000
+
+global CLASSIFIER
+global CLASSIFIERS
+global CUR_CL
+CLASSIFIERS = ('sklearnLinSVC', 'BernoulliNB', 'MultinomialNB')  # ['NaiveBayesClassifier']
+CLASSIFIER = 'BernoulliNB'
+CUR_CL = None
 classification_name = 'news_based_' + CLASSIFIER
 current_path = os.path.dirname(os.path.realpath(__file__))
 # for nltk to find it's datasets
@@ -39,7 +46,7 @@ pickles_dir = os.path.join(current_path, "classifier_pickles")
 
 def grouper(n, iterable, padvalue=None):
     "grouper(3, 'abcdefg', 'x') --> ('a','b','c'), ('d','e','f'), ('g','x','x')"
-    return izip_longest(*[iter(iterable)] * n, fillvalue=padvalue)
+    return izip(*[iter(iterable)] * n)
 
 
 def preprocess_text(text, stem=False):
@@ -50,7 +57,7 @@ def preprocess_text(text, stem=False):
         return text
 
 
-def get_text_words(text, stopwords=[]):
+def get_text_words(text, stopwords=sw):
     text = preprocess_text(text)
     user_set = set(["http", "://"])
     text_words = set(wordpunct_tokenize(text.lower()))
@@ -61,10 +68,16 @@ def get_text_words(text, stopwords=[]):
 
 
 def word_indicator(text, **kwargs):
-    features = defaultdict(list)
-    tweet_words = get_text_words(text, **kwargs)
-    for w in tweet_words:
-        features[w] = True
+    if CLASSIFIER == 'MultinomialNB':
+        features = dict(Counter(wordpunct_tokenize(text.lower())))
+        for el in features.keys():
+            if el in sw or el in ["http", "://"]:
+                del features[el]
+    else:
+        features = defaultdict(list)
+        text_words = get_text_words(text, **kwargs)
+        for w in text_words:
+            features[w] = True
     return features
 
 
@@ -74,27 +87,40 @@ def features_from_text(text, label, **kwargs):
 
 
 def train(records):
+    global CUR_CL
     train_data = []
     for record in records:
         text = record[1]
         class_label = record[0]
         feats = features_from_text(text, class_label, stopwords=sw)
         train_data.append(feats)
-    print train_data
-    if CLASSIFIER != 'sklearnLinSVC':
-        try:
+    if CUR_CL is None:
+        if CLASSIFIER == 'NaiveBayesClassifier':
             classifier = NaiveBayesClassifier.train(train_data)
-            #classifier = SklearnClassifier(BernoulliNB()).train(train_data)
-        except Exception as e:
-            print "Training Failed with following error, reverting db changes \n", e
+        elif CLASSIFIER == 'sklearnLinSVC':
+            pipeline = Pipeline([('tfidf', TfidfTransformer()),
+                                 ('chi2', SelectKBest(chi2, k=1000)),
+                                 ('nb', LinearSVC(multi_class='ovr'))])
+            classifier = SklearnClassifier(pipeline).train(train_data)
+        elif CLASSIFIER == 'BernoulliNB':
+            pipeline = Pipeline([('tfidf', TfidfTransformer()),
+                                 ('chi2', SelectKBest(chi2, k=1000)),
+                                 ('nb', BernoulliNB())])
+            classifier = SklearnClassifier(pipeline).train(train_data)
+        elif CLASSIFIER == 'MultinomialNB':
+            pipeline = Pipeline([('tfidf', TfidfTransformer()),
+                                 ('chi2', SelectKBest(chi2, k=1000)),
+                                 ('nb', MultinomialNB())])
+            classifier = SklearnClassifier(pipeline).train(train_data)
+        print CLASSIFIER
+        CUR_CL = classifier
     else:
-        pipeline = Pipeline([('tfidf', TfidfTransformer()),
-                             ('chi2', SelectKBest(chi2, k=1000)),
-                             ('nb', LinearSVC(multi_class='ovr'))])
-        classifier = SklearnClassifier(pipeline).train(train_data)
-    f = open("%s/%s.pickle" % (pickles_dir, classification_name), 'wb')
-    pickle.dump(classifier, f)
+        print 'Partial fitting.. \n\n'
+        CUR_CL.train(train_data)
+    f = open("%s/%s.pickle" % (pickles_dir, 'news_based_' + CLASSIFIER), 'wb')
+    pickle.dump(CUR_CL, f)
     f.close()
+    print"%s/%s.pickle saved" % (pickles_dir, 'news_based_' + CLASSIFIER)
 
     gc.collect()
 
@@ -111,12 +137,18 @@ def get_filenames():
 
 if __name__ == '__main__':
     files = get_filenames()
-
-    # Train the classificator
-    for records in grouper(RECORDS_TO_TRAIN, files):
+    global CLASSIFIER
+    global CLASSIFIERS
+    global CUR_CL
+    # for each classificator
+    for cl in CLASSIFIERS:
+        CLASSIFIER = cl
+        CUR_CL = None
+        # Train the classificator
+        # for records in grouper(RECORDS_TO_TRAIN, files): # this one is useful for partial_fit() which is not used by NLTK
         preprocessed_records = []
-        print records
-        for category, filepath in records:
+        print len(files)
+        for category, filepath in files:
             with open(filepath) as data_file:
                 data = json.load(data_file)
                 data['text'] = data['body'] + ' ' + data['title']
