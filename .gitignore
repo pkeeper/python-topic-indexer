@@ -1,0 +1,6 @@
+*.class
+*.pyc
+*.pyo
+*/.git/*
+.deployables
+__pycache__
