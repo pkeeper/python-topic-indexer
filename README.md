@@ -19,7 +19,7 @@ Dataset quality hits dirrectly on the classifier performance. Further improvemen
 
 # Algorythms
 Text is cleaned up and stemmed by filters.
-For performance I've used only  **scikitlearn** algorithm implementations.
+For performance I've used only  **scikitlearn** algorithm implementations, native Python NLTK algorythms was way too slow and too hungry for memory.
 Tested algorithms accuracy comparison, for ~7000 trained docs:
  - 0.850 Linear SVC
  - 0.760 Bernoulli Naive Bayes
